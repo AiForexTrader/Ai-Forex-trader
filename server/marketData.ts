@@ -29,9 +29,31 @@ export async function marketDataHandler(request: IncomingMessage, response: Serv
 }
 
 export async function getFresh(key: string, symbol: ProviderSymbol, interval: Interval): Promise<CacheEntry> {
+  const cached = cache.get(key)
+
+  // Genbrug frisk cache i stedet for at ramme Twelve Data igen.
+  if (cached && Date.now() - cached.updatedAt < ttlMs[interval]) {
+    return cached
+  }
+
   const existing = inFlight.get(key)
   if (existing) return existing
-  const request = fetchFromProvider(symbol, interval).then(candles => { const entry = { candles, updatedAt: Date.now() }; cache.set(key, entry); return entry }).finally(() => inFlight.delete(key))
+
+  const request = fetchFromProvider(symbol, interval)
+    .then(candles => {
+      const entry = { candles, updatedAt: Date.now() }
+      cache.set(key, entry)
+      return entry
+    })
+    .catch(error => {
+      // Ved midlertidig provider-fejl/rate limit må paperbotten bruge
+      // eksisterende cache. paperEngine får derefter STALE-status og
+      // kan selv blokere nye entries på stale data.
+      if (cached) return cached
+      throw error
+    })
+    .finally(() => inFlight.delete(key))
+
   inFlight.set(key, request)
   return request
 }
