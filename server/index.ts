@@ -51,6 +51,59 @@ function serveFrontend(url: string, response: import('node:http').ServerResponse
 const server = createServer((request, response) => {
   const url = request.url ?? '/'
 
+  if (url.startsWith('/api/twelve-data-test')) {
+    const apiKey = process.env.TWELVE_DATA_API_KEY
+
+    if (!apiKey) {
+      response.statusCode = 500
+      response.setHeader('Content-Type', 'application/json')
+      response.end(JSON.stringify({
+        apiKeyPresent: false,
+        twelveDataStatus: 'NOT_TESTED'
+      }))
+      return
+    }
+
+    const query = new URLSearchParams({
+      symbol: 'XAU/USD',
+      interval: '5min',
+      outputsize: '1',
+      timezone: 'UTC',
+      apikey: apiKey
+    })
+
+    void fetch(`https://api.twelvedata.com/time_series?${query}`)
+      .then(async providerResponse => {
+        const body = await providerResponse.json() as {
+          status?: string
+          code?: number
+          message?: string
+          values?: unknown[]
+        }
+
+        response.statusCode = 200
+        response.setHeader('Content-Type', 'application/json')
+        response.end(JSON.stringify({
+          apiKeyPresent: true,
+          httpStatus: providerResponse.status,
+          providerStatus: body.status ?? 'ok',
+          providerCode: body.code ?? null,
+          providerMessage: body.message ?? null,
+          receivedCandles: Array.isArray(body.values) ? body.values.length : 0
+        }))
+      })
+      .catch(error => {
+        response.statusCode = 500
+        response.setHeader('Content-Type', 'application/json')
+        response.end(JSON.stringify({
+          apiKeyPresent: true,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }))
+      })
+
+    return
+  }
+
   if (url.startsWith('/api/market-data')) {
     void marketDataHandler(request, response)
     return
