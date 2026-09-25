@@ -65,7 +65,7 @@ async function persistState(): Promise<void> {
 async function marketDataFor(symbol: Symbol): Promise<MarketDataResponse> {
   const entry = await getFresh(`${symbol}:5min`, symbol, '5min')
   const ageMs = Date.now() - entry.updatedAt
-  const stale = ageMs >= 60_000
+  const stale = ageMs >= 5 * 60_000
 
   return {
     symbol,
@@ -85,10 +85,24 @@ async function runPaperCycle(): Promise<void> {
   running = (async () => {
     try {
       await ensureStateLoaded()
-      const fxRates = await loadFxRates() as FxRatesResponse
 
       for (const symbol of symbols) {
         const marketData = await marketDataFor(symbol)
+        const latest = marketData.candles.at(-1)
+
+        // Ingen ny lukket 5-minutters candle = ingen ny strategibehandling
+        // og derfor heller intet unødvendigt FX-kald.
+        if (
+          !latest ||
+          !latest.closed ||
+          paperState.strategyStates[symbol].lastProcessedCandle === latest.timestamp
+        ) {
+          continue
+        }
+
+        // Hent først FX når der faktisk er en ny candle at behandle.
+        // Den eksisterende maxFxAgeSeconds-regel gælder stadig.
+        const fxRates = await loadFxRates() as FxRatesResponse
         const asian = getAsianSessionRange(marketData.candles)
 
         const cycle = processMarketCycle({

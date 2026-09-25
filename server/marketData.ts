@@ -7,7 +7,10 @@ type CacheEntry = { candles: NormalizedCandle[]; updatedAt: number }
 
 const cache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<CacheEntry>>()
-const ttlMs: Record<Interval, number> = { '5min': 90_000, '15min': 240_000 }
+const ttlMs: Record<Interval, number> = {
+  '5min': 5 * 60_000,
+  '15min': 15 * 60_000
+}
 
 export async function marketDataHandler(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://localhost')
